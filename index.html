@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BJJ Position Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#141414; --paper:#f4f0e6; --paper-2:#ebe5d6; --card:#fbf9f3;
+  --red:#b81d24; --grey:#8b857a; --rule:#d6cfbe;
+  --serif:'Shippori Mincho B1', 'Hiragino Mincho ProN', 'Yu Mincho', Georgia, serif;
+  --sans:'Zen Kaku Gothic New', system-ui, -apple-system, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  display:grid; grid-template-rows:auto 1fr; grid-template-columns:1fr 430px;
+  background:var(--paper); color:var(--ink); font-family:var(--sans);
+}
+/* ---------- header ---------- */
+header{
+  grid-column:1/-1; display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:10px 20px; background:var(--card); border-bottom:3px solid var(--ink);
+}
+.brand{display:flex; align-items:center; gap:12px; margin-right:auto}
+.hinomaru{width:26px;height:26px;border-radius:50%;background:var(--red);flex:none}
+.brand h1{font-family:var(--serif); font-weight:800; font-size:22px; margin:0; letter-spacing:.02em}
+.brand .jp{font-family:var(--serif); color:var(--red); font-size:22px; font-weight:800}
+.filters{display:flex; gap:6px; flex-wrap:wrap}
+.chip{
+  display:inline-flex; align-items:center; gap:6px; padding:5px 10px 5px 6px;
+  border:1.5px solid var(--ink); background:var(--card); border-radius:999px;
+  font:500 13px var(--sans); color:var(--ink); cursor:pointer; user-select:none;
+}
+.chip svg{flex:none}
+.chip[aria-pressed="false"]{opacity:.35; text-decoration:line-through}
+.chip:hover{border-color:var(--red)}
+
+/* ---------- map ---------- */
+#mapwrap{position:relative; overflow:hidden; min-height:0;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.55), transparent 60%),
+    var(--paper);}
+#watermark{position:absolute; right:24px; bottom:8px; font-family:var(--serif); font-weight:800;
+  font-size:180px; line-height:1; color:var(--ink); opacity:.045; pointer-events:none; writing-mode:vertical-rl}
+svg#map{width:100%; height:100%; display:block; touch-action:none; cursor:grab}
+svg#map.dragging{cursor:grabbing}
+.controls{position:absolute; right:16px; top:16px; display:flex; flex-direction:column; gap:6px}
+.controls button{
+  width:38px; height:38px; border:2px solid var(--ink); background:var(--card); color:var(--ink);
+  font:700 18px var(--sans); cursor:pointer; border-radius:4px;
+}
+.controls button:hover{background:var(--ink); color:var(--card)}
+.hint{position:absolute; left:16px; bottom:14px; font-size:12.5px; color:var(--grey); pointer-events:none}
+
+/* map nodes */
+.edge{fill:none; stroke:var(--ink); stroke-width:2; opacity:.42; transition:opacity .2s}
+.edge.sub{stroke:var(--red); opacity:.32}
+.edge.sub.out{opacity:.1}
+.edge.ctr{stroke:var(--red); stroke-dasharray:7 5; opacity:.6}
+.edge.hl, .edge.sub.out.hl{opacity:1; stroke-width:3}
+.edge.dim{opacity:.05}
+
+.node{cursor:pointer; transition:opacity .2s}
+.node.dim{opacity:.13}
+.pos .outer{fill:#fffdf8; stroke:var(--ink); stroke-width:5}
+.pos .inner{fill:none; stroke:var(--ink); stroke-width:1.2}
+.pos .name{font-family:var(--serif); font-weight:800; font-size:22px; text-anchor:middle; fill:var(--ink)}
+.pos .kanji{font-family:var(--serif); font-weight:800; font-size:15px; text-anchor:middle; fill:var(--red)}
+.pos:hover .outer{stroke:var(--red)}
+.pos.sel .outer{stroke:var(--red); stroke-width:7}
+.pos.sel .inner{stroke:var(--red); stroke-width:2}
+.pos.subm .outer{fill:var(--ink)}
+.pos.subm .inner{stroke:#fffdf8; stroke-width:1.5}
+.pos.subm .name{fill:#fffdf8}
+.pos.subm.sel .outer{stroke:var(--red)}
+
+.mv circle.dot{stroke-width:2.5}
+.mv .ring{fill:none; stroke:var(--red); stroke-width:3; opacity:0}
+.mv.sel .ring, .mv:hover .ring{opacity:1}
+.mv .glyph{font:700 13px var(--sans); text-anchor:middle; dominant-baseline:central; pointer-events:none}
+.mv .lbl{font:700 13px var(--sans); text-anchor:middle; fill:var(--ink);
+  paint-order:stroke; stroke:var(--paper); stroke-width:5px; stroke-linejoin:round}
+.mv.t-counter .lbl{fill:var(--red)}
+.mv.t-submission .lbl{fill:var(--red)}
+
+/* move type styles (shared by map, legend, chips) */
+.t-takedown .dot{fill:var(--ink); stroke:var(--red); stroke-width:4}
+.t-takedown .glyph{fill:#fff}
+.t-sweep .dot{fill:var(--ink); stroke:var(--ink)}
+.t-sweep .glyph{fill:#fff}
+.t-pass .dot{fill:#fffdf8; stroke:var(--ink)}
+.t-pass .glyph{fill:var(--ink)}
+.t-escape .dot{fill:#fffdf8; stroke:var(--ink); stroke-dasharray:4 3}
+.t-escape .glyph{fill:var(--ink)}
+.t-transition .dot{fill:var(--grey); stroke:var(--grey)}
+.t-transition .glyph{fill:#fff}
+.t-back .dot{fill:#fffdf8; stroke:var(--ink); stroke-width:5}
+.t-back .glyph{fill:var(--ink)}
+.t-submission .dot{fill:var(--red); stroke:var(--red)}
+.t-submission .glyph{fill:#fff}
+.t-counter .dot{fill:#fffdf8; stroke:var(--red)}
+.t-counter .glyph{fill:var(--red)}
+.hidden{display:none}
+
+/* ---------- sidebar ---------- */
+aside{border-left:3px solid var(--ink); background:var(--card); overflow-y:auto; min-height:0}
+.panel{padding:22px 24px 40px}
+.kicker{display:flex; align-items:center; gap:8px; font:700 12px var(--sans); letter-spacing:.12em;
+  text-transform:uppercase; color:var(--grey)}
+.kicker .tag{color:var(--red)}
+.title{font-family:var(--serif); font-weight:800; font-size:32px; line-height:1.15; margin:6px 0 2px}
+.romaji{font-family:var(--serif); color:var(--red); font-size:15px; margin-bottom:4px}
+.romaji b{font-size:20px; margin-right:8px}
+figure{margin:0}
+.diagram{margin:16px 0 6px; background:#fffdf8; border:2px solid var(--ink); padding:6px 6px 2px; position:relative}
+.diagram::after{content:''; position:absolute; inset:4px; border:1px solid var(--rule); pointer-events:none}
+.diagram svg{display:block; width:100%; height:auto}
+.frames{display:grid; grid-template-columns:1fr; justify-items:center; gap:2px; margin:16px 0 6px}
+.frames figure{width:100%}
+.frames .diagram{margin:0}
+.frames .arrow{font:800 22px var(--serif); color:var(--red)}
+.figcap{font-size:11.5px; color:var(--grey); text-align:center; padding:2px 0 4px}
+.figcap i{font-style:normal; display:inline-block; width:9px; height:9px; border-radius:50%; margin:0 3px 0 6px; vertical-align:0}
+.figlabel{font:700 11px var(--sans); letter-spacing:.1em; text-transform:uppercase; text-align:center; margin-top:4px}
+.desc{font-size:15.5px; line-height:1.65; margin:16px 0}
+h3{font-family:var(--serif); font-weight:800; font-size:17px; margin:24px 0 8px; display:flex; align-items:center; gap:10px}
+h3::after{content:''; flex:1; height:1.5px; background:var(--ink)}
+ol.steps{list-style:none; counter-reset:s; padding:0; margin:0}
+ol.steps li{counter-increment:s; position:relative; padding:4px 0 8px 34px; font-size:14.5px; line-height:1.55}
+ol.steps li::before{content:counter(s); position:absolute; left:0; top:3px; width:22px; height:22px; border-radius:50%;
+  background:var(--red); color:#fff; font:700 12px/22px var(--sans); text-align:center}
+.links{display:flex; flex-direction:column; gap:6px}
+.link{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:7px 10px;
+  border:1.5px solid var(--rule); background:#fffdf8; border-radius:4px; cursor:pointer;
+  font:500 14px var(--sans); color:var(--ink)}
+.link:hover{border-color:var(--ink)}
+.link .to{margin-left:auto; color:var(--grey); font-size:12.5px; white-space:nowrap}
+.grouplabel{font:700 11px var(--sans); letter-spacing:.12em; text-transform:uppercase; color:var(--grey); margin:12px 0 4px}
+.route{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px}
+.route .link{width:auto}
+.route .sep{color:var(--red); font-weight:800}
+.legend{display:grid; grid-template-columns:auto 1fr; gap:8px 12px; align-items:center; font-size:14px; margin-top:6px}
+.note{font-size:12.5px; color:var(--grey); line-height:1.5; margin-top:28px; border-top:1px solid var(--rule); padding-top:12px}
+.intro p{font-size:15px; line-height:1.65}
+
+@media (max-width: 820px){
+  body{grid-template-columns:1fr; grid-template-rows:auto 1fr 46vh}
+  aside{border-left:0; border-top:3px solid var(--ink)}
+  header{padding:8px 16px; gap:10px}
+  .brand h1{font-size:18px}
+  .filters{width:100%; overflow-x:auto; flex-wrap:nowrap; padding-bottom:2px}
+  .chip{flex:none}
+  .panel{padding:16px 16px 32px}
+  #watermark{font-size:110px}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="hinomaru"></div><span class="jp">柔術</span><h1>BJJ Position Map</h1></div>
+  <div class="filters" id="filters"></div>
+</header>
+
+<div id="mapwrap">
+  <div id="watermark">柔術</div>
+  <svg id="map" aria-label="Map of BJJ positions and moves">
+    <defs>
+      <marker id="arr-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#141414"/>
+      </marker>
+      <marker id="arr-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="13" markerHeight="13" markerUnits="userSpaceOnUse" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#b81d24"/>
+      </marker>
+    </defs>
+    <g id="viewport">
+      <g id="edges"></g>
+      <g id="positions"></g>
+      <g id="moves"></g>
+    </g>
+  </svg>
+  <div class="controls">
+    <button id="zin" title="Zoom in">+</button>
+    <button id="zout" title="Zoom out">−</button>
+    <button id="zfit" title="Fit to screen">⤢</button>
+  </div>
+  <div class="hint">Click a circle · drag to pan · scroll to zoom · Esc to clear</div>
+</div>
+
+<aside id="side"><div class="panel" id="panel"></div></aside>
+
+<script>
+/* =====================================================================
+   DATA — positions
+   ===================================================================== */
+const POSITIONS = [
+  { id:'standing', name:'Standing', label:['Standing'], kanji:'立技', romaji:'Tachi-waza', x:1250, y:150, tag:'Neutral',
+    desc:"Every match starts here. Both players are on their feet, fighting for grips and looking to bring the fight to the ground on their own terms: a takedown to land on top, or pulling guard to start from the bottom.",
+    points:["Keep a good stance: knees bent, back straight, hips under you.","Win the grip fight before you attack.","Decide early whether you're taking them down or pulling guard.","Keep your head up and don't reach with straight arms."] },
+  { id:'closed', name:'Closed Guard', label:['Closed','Guard'], x:700, y:620, tag:'Guard',
+    desc:"The bottom player wraps their legs around the top player's waist and crosses the ankles. It's one of the strongest bottom positions: the guard player controls distance and posture and threatens sweeps and submissions. The top player works to keep good posture and open the legs.",
+    points:["Bottom: break their posture by pulling the head and arms down toward you.","Bottom: angle off with your hips. Attacks straight on are weak.","Top: posture up with your back straight and elbows in, hands on their hips or belt.","Top: open the guard before you try to pass."] },
+  { id:'open', name:'Open Guard', label:['Open','Guard'], x:1800, y:620, tag:'Guard',
+    desc:"The bottom player keeps the ankles uncrossed and manages distance with feet, knees and grips on the hips, biceps, sleeves or collar. Open guard is a family of guards (butterfly, spider, de la Riva and more). It gives more sweeping options than closed guard, but it also gives the top player more room to pass.",
+    points:["Always keep at least one foot or knee between you and them.","Control sleeves or wrists so they can't grip your legs freely.","Keep your hips moving. A flat, still guard gets passed.","Top: control the legs (pants, knees, ankles) and move around them instead of diving in."] },
+  { id:'half', name:'Half Guard', label:['Half','Guard'], x:250, y:1250, tag:'Guard',
+    desc:"The bottom player traps one of the top player's legs between their own. For the bottom player it's halfway between being passed and recovering guard, and the underhook opens up great sweeps and back takes. The top player wants to flatten them, crossface and free the trapped leg to pass.",
+    points:["Bottom: get onto your side, never flat on your back.","Bottom: fight for the underhook on the trapped-leg side. It's the key grip.","Top: crossface and win the underhook yourself to flatten them.","Top: free your trapped knee to pass to side control or mount."] },
+  { id:'back', name:'Back Control', label:['Back','Control'], x:1250, y:1200, tag:'Dominant',
+    desc:"The attacker is behind the opponent, chest to back, usually with both hooks in (heels inside the thighs) and a seatbelt grip (one arm over the shoulder, one under the armpit). It's widely seen as the most dominant position: the defender can't see the attacks coming and the neck is exposed.",
+    points:["Attacker: seatbelt grip, with your chest glued to their back.","Attacker: hooks in, but don't cross your feet or you risk a foot lock.","Defender: protect the neck first by two-on-one hand fighting the choking hand.","Defender: slide your shoulders to the mat on the under-arm side, then turn in."] },
+  { id:'turtle', name:'Turtle', label:['Turtle'], kanji:'亀', romaji:'Kame', x:2300, y:1200, tag:'Defensive',
+    desc:"The bottom player is on knees and elbows, curled up to protect the neck and stop a guard pass. It's a quick way out of being pinned, but it exposes the back. The attacker tries to take the back or break them down flat.",
+    points:["Bottom: elbows tight to your knees and chin tucked, with no gaps.","Bottom: don't stay there. Recover guard, stand up, or attack a leg.","Top: stay heavy on their back and keep your hips low.","Top: work for the seatbelt grip and slip a hook in."] },
+  { id:'mount', name:'Mount', label:['Mount'], kanji:'縦四方固', romaji:'Tate-shiho-gatame', x:700, y:1750, tag:'Dominant',
+    desc:"The top player sits astride the bottom player's torso with knees on the mat. It's one of the most dominant positions in BJJ: chokes and arm attacks are wide open, and the bottom player has few attacks. Escaping it takes technique, not strength.",
+    points:["Top: keep your knees high, near their armpits, and your weight on their chest.","Top: post your hands or widen your base when they bridge.","Bottom: protect your neck and keep your elbows tight to your ribs.","Bottom: combine the bridge (upa) with the elbow–knee escape."] },
+  { id:'kob', name:'Knee on Belly', label:['Knee on','Belly'], x:1250, y:2150, tag:'Dominant',
+    desc:"The top player drives one knee into the bottom player's stomach or chest, with the other leg posted out wide. It's a mobile, high-pressure position: it's uncomfortable for the bottom player and forces them to react, which opens up mount and submissions.",
+    points:["Top: point your knee at their far hip, with your shin across the belly.","Top: post the other leg wide for balance and stay light on your feet.","Grip the far collar and the near hip or belt to steer them.","Bottom: push the knee and shrimp away to get your guard back."] },
+  { id:'side', name:'Side Control', label:['Side','Control'], kanji:'横四方固', romaji:'Yoko-shiho-gatame', x:1800, y:1750, tag:'Dominant',
+    desc:"The top player has passed the guard and pins the bottom player chest to chest from the side, roughly at right angles to them. It's a strong control position with many transitions to mount, knee on belly and submissions. The bottom player has to build frames and create space to escape.",
+    points:["Top: stay heavy through your chest, hips low, controlling the head and near arm.","Top: block the near hip so they can't shrimp.","Bottom: frame with your forearms on their neck and hip instead of pushing with straight arms.","Bottom: shrimp to make space, then get a knee back in or turn to your knees."] },
+  { id:'ns', name:'North-South', label:['North-','South'], kanji:'上四方固', romaji:'Kami-shiho-gatame', x:2400, y:2150, tag:'Dominant',
+    desc:"The top player lies chest to chest with the bottom player but facing the opposite way, with their head toward the bottom player's hips. It's a heavy pin that sets up the north-south choke and kimura, and a common stop when moving from one side control to the other.",
+    points:["Top: sprawl your hips low and keep your chest on theirs.","Top: control their arms so they can't grab your belt or legs.","Bottom: get your elbows in, bridge, and turn to face them or recover guard.","Bottom: protect your neck from the north-south choke."] },
+  { id:'sub', name:'Submission', label:['Submission'], kanji:'参った', romaji:'Maitta', x:-250, y:1250, tag:'End', isSub:true,
+    desc:"Where every submission line ends: a joint lock or choke that makes the opponent tap. In judo, 'maitta' means 'I give up'. Learn these carefully, apply them slowly in training, and tap early when you're caught.",
+    points:["Position before submission: secure control first.","Tap early and often. Ego heals slower than joints do.","Release the moment your partner taps."] },
+];
+
+/* =====================================================================
+   DATA — moves. type: takedown|sweep|pass|escape|transition|back|submission|counter
+   counters have counterOf instead of from. submissions go to 'sub'.
+   ===================================================================== */
+const MOVES = [
+  // ---- standing
+  { id:'m_pull', end:'bottom', name:'Guard Pull', type:'transition', from:'standing', to:'closed', by:'Puller (ends on bottom)',
+    desc:"Grip a collar and sleeve, sit down while pulling the opponent in, and wrap your legs around them. It's a safe way to take the fight to the ground on your terms.",
+    steps:["Get your grips first: collar and sleeve.","Put a foot on their hip and sit down close to your heel.","Pull them in and lock your ankles behind their back."] },
+  { id:'m_double', name:'Double-Leg Takedown', type:'takedown', from:'standing', to:'side', by:'Attacker',
+    desc:"Change levels, step deep between their legs, grab behind both knees and drive through to take them down. Turn the corner as you land to come straight up in side control.",
+    steps:["Fake high, then drop your hips (level change).","Take a deep penetration step with your lead knee between their feet.","Head on the outside, hands behind both knees.","Drive forward and turn the corner, landing in side control."] },
+  { id:'m_osoto', name:'O-Soto-Gari', type:'takedown', from:'standing', to:'side', by:'Attacker',
+    desc:"The classic judo major outer reap. Break their balance back onto one heel, then reap that supporting leg out from under them. Follow them down into side control.",
+    steps:["Pull their sleeve down and push the collar to put their weight on one heel.","Step deep beside them with your supporting leg.","Swing your reaping leg through and sweep back hard, calf to calf.","Follow them down and settle into side control."] },
+  { id:'s_guillotine', name:'Guillotine', type:'submission', from:'standing', target:'neck', by:'Defender of the shot',
+    desc:"Wrap your arm around their neck, often as they shoot for a takedown, with your forearm under the chin. Lift up into the throat. You can finish standing or by pulling guard.",
+    steps:["Snap their head down or catch it as they shoot.","Wrap the arm around the neck, forearm under the chin.","Grip your own wrist, keep your elbow tight, and lift up through the chin."] },
+
+  // ---- closed guard
+  { id:'m_scissor', name:'Scissor Sweep', type:'sweep', from:'closed', to:'mount', by:'Bottom',
+    desc:"With a collar and sleeve grip, shrimp out to an angle, put one shin across their belly and chop the other leg behind their knee, scissoring them over into mount.",
+    steps:["Grip the collar and same-side sleeve, open your guard and shrimp to the side.","Put your shin across their belly with your knee at their chest.","Lay your bottom leg on the mat behind their knee.","Pull them onto the shin, chop with the bottom leg, and roll up into mount."] },
+  { id:'m_hipbump', name:'Hip Bump Sweep', type:'sweep', from:'closed', to:'mount', by:'Bottom',
+    desc:"When they posture up, sit up onto your elbow and hand, reach over their shoulder, and drive your hips into them to roll them over.",
+    steps:["Open your guard as they sit back upright.","Sit up onto your posted hand and reach over their same-side shoulder.","Drive your hips up and into them, rolling them over the posted side.","Come up into mount."] },
+  { id:'m_flower', name:'Flower Sweep', type:'sweep', from:'closed', to:'mount', by:'Bottom',
+    desc:"Also called the pendulum sweep. Control an arm, hook under the same-side leg, and swing your other leg like a pendulum to tip them over.",
+    steps:["Control the sleeve and reach under their same-side leg.","Angle off and swing your free leg wide and high.","Chop it down hard while lifting their leg, rolling them toward the trapped arm.","Follow over into mount."] },
+  { id:'m_armdrag', name:'Arm Drag', type:'back', from:'closed', to:'back', by:'Bottom',
+    desc:"Pull their arm across your body and use it like a rope to climb around to their back.",
+    steps:["Grip their wrist and reach under with your other hand to grab the triceps.","Drag the arm across your body as you sit up to the side.","Climb around their back and take a seatbelt grip.","Put your hooks in."] },
+  { id:'m_breakguard', name:'Stand & Open Guard', type:'transition', from:'closed', to:'open', by:'Top',
+    desc:"The top player builds good posture, stands up (or kneels with one knee forward), and uses gravity and hip pressure to pop the ankles open.",
+    steps:["Posture up with your back straight and hands on their hips or belt.","Step up one foot at a time while controlling their sleeves.","Sit your hips back and push a knee down to break the ankles apart."] },
+  { id:'s_armbar_cg', name:'Armbar', type:'submission', from:'closed', target:'elbow', by:'Bottom',
+    desc:"Control an arm, put your foot on their hip to pivot, swing your leg over their head, and lift your hips to straighten the elbow against them.",
+    steps:["Control the wrist and keep their elbow across your centre line.","Foot on the hip, pivot your body to an angle.","Swing your leg over their head and pinch your knees.","Thumb up, then lift your hips slowly."] },
+  { id:'s_triangle', name:'Triangle Choke', type:'submission', from:'closed', target:'neck', by:'Bottom',
+    desc:"Trap one of their arms and the head inside your legs, then lock your legs in a figure-four around the neck. Squeeze your knees and pull the head down.",
+    steps:["Push one arm in while keeping the other out.","Shoot your leg high over the shoulder, across the back of the neck.","Lock your other leg over the ankle in a figure-four.","Angle off, pull the head down, and squeeze."] },
+  { id:'s_kimura_cg', name:'Kimura', type:'submission', from:'closed', target:'shoulder', by:'Bottom',
+    desc:"Grab their wrist, sit up and reach over their arm to lock a figure-four grip, then rotate the arm behind their back to attack the shoulder.",
+    steps:["Grab their wrist when they post a hand on the mat.","Sit up, reach over their arm and grab your own wrist.","Fall back, angle off, and rotate their hand toward their back."] },
+  { id:'s_collar', name:'Cross-Collar Choke', type:'submission', from:'closed', target:'neck', by:'Bottom',
+    desc:"Get both hands deep into opposite collars, then pull your elbows apart and toward you so the edges of the gi close off the sides of the neck.",
+    steps:["First hand deep in the collar, four fingers in and thumb out.","Second hand into the opposite collar, palm up or palm down.","Pull them in with your guard and flare your elbows to finish."] },
+
+  // ---- open guard
+  { id:'m_close', name:'Close the Guard', type:'transition', from:'open', to:'closed', by:'Bottom',
+    desc:"If the top player stays inside your legs, wrap them back around the waist and cross your ankles to go back to closed guard.", steps:[] },
+  { id:'m_toreando', name:'Toreando Pass', type:'pass', from:'open', to:'side', by:'Top', t:0.36,
+    desc:"Grip the pants at the knees, push the legs to one side like a bullfighter swinging a cape, and circle around to side control.",
+    steps:["Grip both pant legs at the knee.","Push their knees down and to one side.","Step around at an angle, staying light and fast.","Drop your chest onto theirs in side control."] },
+  { id:'m_overunder', name:'Over-Under Pass', type:'pass', from:'open', to:'side', by:'Top', t:0.36,
+    desc:"Wrap one arm under a leg and the other over the top, stack their hips, and grind around their legs with heavy shoulder pressure.",
+    steps:["One arm under their leg, the other over the opposite thigh.","Stack their hips onto their shoulders.","Walk around toward the over-arm side, keeping pressure.","Settle into side control."] },
+  { id:'m_butterfly', name:'Butterfly Sweep', type:'sweep', from:'open', to:'side', by:'Bottom', t:0.36,
+    desc:"From butterfly guard, with an underhook and control of the other arm, fall to the side and lift with your hook to throw them over. You land on top, usually in side control or mount.",
+    steps:["Sit up with both butterfly hooks inside their thighs.","Underhook one arm and control the other.","Fall to the overhook side, lifting with the hook on the underhook side.","Follow them over and settle on top."] },
+  { id:'m_standup', name:'Technical Stand-Up', type:'transition', from:'open', to:'standing', by:'Bottom',
+    desc:"Get back to your feet safely: post a hand behind you, frame or block with the other, and swing your leg back underneath you.",
+    steps:["Sit up, post one hand behind you and plant the opposite foot.","Lift your hips and swing your free leg back underneath you.","Come up in a stance with your hand still up for protection."] },
+  { id:'m_clearleg', name:'Clear One Leg', type:'pass', from:'open', to:'half', by:'Top',
+    desc:"The top player pins or clears one leg, but the bottom player traps the other: a partial pass that ends in half guard.", steps:[] },
+  { id:'s_omoplata', name:'Omoplata', type:'submission', from:'open', target:'shoulder', by:'Bottom',
+    desc:"Use your legs to trap and lock one of their arms at the shoulder, then sit up and lean forward to rotate it. It's often used as a sweep when they roll out.",
+    steps:["Control the sleeve and swing your leg over their shoulder.","Spin your body to face their feet, trapping the arm with your legs.","Sit up, control their hip, and lean forward slowly."] },
+
+  // ---- half guard
+  { id:'m_kneeslice', name:'Knee Slice Pass', type:'pass', from:'half', to:'side', by:'Top',
+    desc:"Also called the knee cut. Slide your knee across their thigh to the mat while crossfacing and controlling the underhook, freeing your trapped leg and landing in side control.",
+    steps:["Crossface and win the underhook.","Turn your knee out and slide it across their thigh to the mat.","Keep your weight on their chest as your leg clears.","Settle into side control."] },
+  { id:'m_dogfight', name:'Underhook to Back', type:'back', from:'half', to:'back', by:'Bottom',
+    desc:"Get the underhook, come up onto your side and then your knee (the 'dogfight' position), and circle behind them.",
+    steps:["Get on your side and win the underhook.","Come up onto your knee, head tight to their chest.","Circle behind them, take the seatbelt, and put your hooks in."] },
+  { id:'m_reguard', name:'Recover Full Guard', type:'escape', from:'half', to:'closed', by:'Bottom',
+    desc:"Frame, shrimp, and free your trapped leg past their knee so you can wrap both legs around them again.",
+    steps:["Frame on the hip and shoulder.","Shrimp your hips out to make space.","Free your leg past their knee and close your guard."] },
+  { id:'s_kimura_half', name:'Kimura (Half)', type:'submission', from:'half', target:'shoulder', by:'Bottom',
+    desc:"When they post a hand to stop your sweep, catch the wrist and lock a figure-four (kimura) grip from bottom half guard.", steps:[] },
+
+  // ---- side control
+  { id:'m_sc_mount', name:'Knee Slide to Mount', type:'transition', from:'side', to:'mount', by:'Top',
+    desc:"Slide your knee across their belly, keeping their near hip blocked, and step over into mount.",
+    steps:["Control the far arm or head so they can't bridge.","Slide your knee across their belly.","Pop your foot over and settle your knees high."] },
+  { id:'m_sc_kob', name:'Pop to Knee on Belly', type:'transition', from:'side', to:'kob', by:'Top',
+    desc:"Pop up onto your feet and drop your knee onto their stomach, posting the other leg wide.", steps:[] },
+  { id:'m_sc_ns', name:'Walk to North-South', type:'transition', from:'side', to:'ns', by:'Top',
+    desc:"Keep your chest on theirs and walk your legs around their head until you face their hips.", steps:[] },
+  { id:'m_shrimp', name:'Shrimp & Reguard', type:'escape', from:'side', to:'half', by:'Bottom',
+    desc:"Frame on the neck and hip, bridge to unweight them, then shrimp your hips away and slip a knee back in to trap a leg.",
+    steps:["Forearm frame on the neck, other hand on the hip.","Bridge into them to make them post.","Shrimp your hips away from them.","Slide your knee in and trap a leg."] },
+  { id:'m_sc_turtle', name:'Turn to Turtle', type:'escape', from:'side', to:'turtle', by:'Bottom',
+    desc:"Make a frame, shrimp, and turn in toward them onto your knees instead of being flattened.", steps:[] },
+  { id:'s_americana', name:'Americana', type:'submission', from:'side', target:'shoulder', by:'Top',
+    desc:"Pin their wrist to the mat with the elbow bent at 90°, lock a figure-four grip, then slide the hand toward their hip while lifting the elbow, like painting with a brush.",
+    steps:["Pin the far wrist to the mat beside their head.","Thread your other arm under their elbow and grab your own wrist.","Slide their hand down toward the hip and lift the elbow."] },
+  { id:'s_kimura_sc', name:'Kimura (Side)', type:'submission', from:'side', target:'shoulder', by:'Top',
+    desc:"Catch the near wrist, figure-four the arm, and rotate it behind their back.", steps:[] },
+
+  // ---- knee on belly
+  { id:'m_kob_mount', name:'Step Over to Mount', type:'transition', from:'kob', to:'mount', by:'Top',
+    desc:"When they push on your knee, let it slide across their belly and step over into mount.", steps:[] },
+  { id:'m_kob_side', name:'Drop to Side Control', type:'transition', from:'kob', to:'side', by:'Top',
+    desc:"Slide the knee back and drop your chest to go back to a heavy side control.", steps:[] },
+  { id:'m_kob_esc', name:'Push & Shrimp to Guard', type:'escape', from:'kob', to:'open', by:'Bottom',
+    desc:"Push the knee off your belly toward their foot, shrimp away, and bring your legs back in front of them.", steps:[] },
+  { id:'s_armbar_kob', name:'Far-Side Armbar', type:'submission', from:'kob', target:'elbow', by:'Top',
+    desc:"When they push on you, circle around their head, sit back, and extend the arm.", steps:[] },
+
+  // ---- mount
+  { id:'m_upa', end:'top', name:'Upa (Bridge & Roll)', type:'escape', from:'mount', to:'closed', by:'Bottom',
+    desc:"Trap one arm and the same-side foot, bridge high over your shoulder, and roll them. You end up on top, inside their guard.",
+    steps:["Trap their arm against your chest.","Trap the same-side foot with your foot.","Bridge up and over your shoulder toward the trapped side.","Land on top in their guard with good posture."] },
+  { id:'m_elbowknee', name:'Elbow–Knee Escape', type:'escape', from:'mount', to:'half', by:'Bottom',
+    desc:"Turn onto your side and shrimp, bringing elbow and knee together to make space, then slide a leg back between theirs.",
+    steps:["Turn onto your side, elbow tight.","Shrimp your hips away and bring elbow and knee together.","Slide your knee through and trap their leg (half guard).","Repeat on the other side to get full guard back."] },
+  { id:'m_mount_back', name:'Take the Back', type:'back', from:'mount', to:'back', by:'Top',
+    desc:"When they turn away to escape, follow them, put your hooks in, and take the seatbelt grip.", steps:[] },
+  { id:'s_armbar_m', name:'Armbar (Mount)', type:'submission', from:'mount', target:'elbow', by:'Top',
+    desc:"Isolate an arm, climb your knees high, then swing your leg over their head and fall back, extending the arm.",
+    steps:["Isolate one arm against your chest.","Climb to high mount and pivot.","Swing your leg over the head, fall back, pinch your knees, and lift your hips."] },
+  { id:'s_armtri', name:'Arm Triangle', type:'submission', from:'mount', target:'neck', by:'Top',
+    desc:"Trap their head and one arm together with your arm, lock your hands, and drop to the side to squeeze with your shoulder.", steps:[] },
+  { id:'s_collar_m', name:'Cross-Collar (Mount)', type:'submission', from:'mount', target:'neck', by:'Top',
+    desc:"Get both hands deep in opposite collars from mount and drop your head to the mat as you flare your elbows.", steps:[] },
+
+  // ---- back
+  { id:'m_backesc', end:'top', name:'Back Escape', type:'escape', from:'back', to:'half', by:'Defender',
+    desc:"Protect the neck, slide your shoulders to the mat on the side of their under-arm, clear the hook, and turn in to face them.",
+    steps:["Two-on-one on the choking arm.","Slide down so your shoulders reach the mat on the under-arm side.","Clear the bottom hook with your hand or leg.","Turn in toward them and fight for top position."] },
+  { id:'s_rnc', name:'Rear Naked Choke', type:'submission', from:'back', target:'neck', by:'Attacker',
+    desc:"Slide your choking arm under the chin, grab your own biceps, put the other hand behind their head, and squeeze your elbows together.",
+    steps:["Get your choking arm deep under the chin, elbow under it.","Grab your biceps and put your other hand behind their head.","Squeeze your elbows together and expand your chest."] },
+  { id:'s_bowarrow', name:'Bow & Arrow Choke', type:'submission', from:'back', target:'neck', by:'Attacker',
+    desc:"A gi choke: grip deep in the collar, grab their pants, and stretch them out like drawing a bow.", steps:[] },
+
+  // ---- turtle
+  { id:'m_seatbelt', name:'Seatbelt & Hooks', type:'back', from:'turtle', to:'back', by:'Top',
+    desc:"Take a seatbelt grip from on top of their back, then slip your hooks in, one at a time or by rolling them.", steps:[] },
+  { id:'m_breakdown', name:'Break Down', type:'transition', from:'turtle', to:'side', by:'Top',
+    desc:"Chop out a supporting arm or knee and drive them flat onto their side, then settle into side control.", steps:[] },
+  { id:'m_granby', name:'Granby Roll', type:'escape', from:'turtle', to:'open', by:'Bottom',
+    desc:"Roll over your shoulder (not your neck) to spin your legs back in front of the opponent and recover guard.", steps:[] },
+  { id:'s_clock', name:'Clock Choke', type:'submission', from:'turtle', target:'neck', by:'Top',
+    desc:"Feed a deep collar grip, trap their arm, and walk your legs around like a clock hand to tighten the choke.", steps:[] },
+
+  // ---- north-south
+  { id:'m_ns_side', name:'Back to Side Control', type:'transition', from:'ns', to:'side', by:'Top',
+    desc:"Walk back around to either side to settle into side control.", steps:[] },
+  { id:'m_ns_esc', name:'Bridge & Turn In', type:'escape', from:'ns', to:'turtle', by:'Bottom',
+    desc:"Get your elbows inside, bridge, and turn onto your knees.", steps:[] },
+  { id:'s_nschoke', name:'North-South Choke', type:'submission', from:'ns', target:'neck', by:'Top',
+    desc:"Wrap an arm around the neck from north-south and sprawl your weight down to squeeze it closed.", steps:[] },
+  { id:'s_kimura_ns', name:'Kimura (N-S)', type:'submission', from:'ns', target:'shoulder', by:'Top',
+    desc:"Catch a figure-four grip on the arm from north-south and rotate it behind their back.", steps:[] },
+
+  // ---- counters
+  { id:'c_sprawl', end:'top', name:'Sprawl', type:'counter', counterOf:'m_double', to:'turtle', by:'Defender',
+    desc:"Shoot your legs back and drop your hips onto their shoulders so the shot stalls. They end up flattened or turtled underneath you.",
+    steps:["Hips back, legs back and wide.","Drop your weight onto their head and shoulders.","Circle around toward their back."] },
+  { id:'c_post', name:'Post the Hand', type:'counter', counterOf:'m_hipbump', to:'closed', by:'Top',
+    desc:"Post the free hand on the mat to stop the roll. The sweep fails, but the posted arm is now open to a kimura, so watch for it.", steps:[] },
+  { id:'c_kneeslice', end:'attacker', name:'Underhook & Back Take', type:'counter', counterOf:'m_kneeslice', to:'back', by:'Bottom',
+    desc:"As they cut the knee across, win the underhook, come up onto your side, and take the back as they over-commit.", steps:[] },
+  { id:'c_toreando', name:'Hip Escape & Reguard', type:'counter', counterOf:'m_toreando', to:'open', by:'Bottom',
+    desc:"Turn your hips away from the passing side and bring your knees back in front of them before they can pin your chest.", steps:[] },
+  { id:'c_crossface', name:'Crossface & Hip Block', type:'counter', counterOf:'m_shrimp', to:'side', by:'Top',
+    desc:"Turn their face away with a crossface and block the near hip so they can't shrimp. They stay pinned.", steps:[] },
+  { id:'c_turtleback', end:'attacker', name:'Take the Back', type:'counter', counterOf:'m_sc_turtle', to:'back', by:'Top',
+    desc:"As they turn to their knees, follow them and get your hooks in before they can settle into turtle.", steps:[] },
+  { id:'c_base', name:'Post & Base', type:'counter', counterOf:'m_upa', to:'mount', by:'Top',
+    desc:"Post your hand or widen your base on the side they bridge toward. The roll stalls and you keep mount.", steps:[] },
+  { id:'c_follow', end:'top', name:'Follow to Mount', type:'counter', counterOf:'m_backesc', to:'mount', by:'Attacker',
+    desc:"As their shoulders hit the mat, swing your leg over and come up into mount.", steps:[] },
+  { id:'c_stack', name:'Stack & Pull Out', type:'counter', counterOf:'s_armbar_cg', to:'open', by:'Top',
+    desc:"Stack them onto their shoulders, turn your thumb toward the mat, and pull the elbow out. You're in their open guard.", steps:[] },
+  { id:'c_posture', name:'Posture Up', type:'counter', counterOf:'s_triangle', to:'open', by:'Top',
+    desc:"Before the legs lock, posture up, keep your elbow tight, and pull the trapped arm out.", steps:[] },
+];
+
+/* =====================================================================
+   POSES — stick figures. a = black, b = red. viewBox 240×160.
+   joints: h head, n neck, p pelvis, e/w near elbow/wrist (1) far (2), k/f near knee/foot (1) far (2)
+   ===================================================================== */
+const POSES = {
+  standing:{ view:'side', front:'b', cap:['Player A','Player B'], victim:'b',
+    a:{h:[88,30],n:[84,44],p:[82,88],e1:[100,62],w1:[120,56],e2:[98,70],w2:[118,72],k1:[86,114],f1:[78,142],k2:[96,114],f2:[100,142]},
+    b:{h:[152,30],n:[156,44],p:[158,88],e1:[140,62],w1:[122,58],e2:[142,70],w2:[124,70],k1:[154,114],f1:[162,142],k2:[144,114],f2:[140,142]} },
+  closed:{ view:'side', front:'a', cap:['Bottom (guard)','Top'], victim:'b',
+    a:{h:[36,126],n:[50,130],p:[100,132],e1:[72,114],w1:[100,102],e2:[70,118],w2:[96,108],k1:[132,108],f1:[160,102],k2:[128,112],f2:[156,108]},
+    b:{h:[110,70],n:[118,82],p:[148,114],e1:[112,104],w1:[102,126],e2:[118,106],w2:[108,124],k1:[124,140],f1:[156,142],k2:[128,138],f2:[160,140]} },
+  open:{ view:'side', front:'a', cap:['Bottom (guard)','Top'], victim:'b',
+    a:{h:[44,112],n:[56,120],p:[98,132],e1:[78,110],w1:[104,104],e2:[76,116],w2:[100,110],k1:[124,100],f1:[154,86],k2:[118,102],f2:[136,72]},
+    b:{h:[132,38],n:[140,50],p:[162,84],e1:[136,76],w1:[122,100],e2:[144,78],w2:[128,104],k1:[166,112],f1:[172,142],k2:[156,114],f2:[152,142]} },
+  half:{ view:'side', front:'b', cap:['Bottom','Top'], victim:'b',
+    a:{h:[40,124],n:[52,128],p:[102,130],e1:[80,110],w1:[106,96],e2:[62,112],w2:[74,102],k1:[126,108],f1:[152,128],k2:[130,138],f2:[150,128]},
+    b:{h:[66,102],n:[78,108],p:[124,104],e1:[58,118],w1:[44,132],e2:[90,122],w2:[94,140],k1:[152,122],f1:[184,134],k2:[146,104],f2:[170,128]} },
+  back:{ view:'side', front:'a', cap:['Attacker','Defender'], victim:'b',
+    a:{h:[114,74],n:[106,88],p:[90,132],e1:[128,78],w1:[148,98],e2:[120,110],w2:[142,102],k1:[116,112],f1:[142,122],k2:[112,116],f2:[138,128]},
+    b:{h:[138,72],n:[132,86],p:[118,128],e1:[148,104],w1:[140,86],e2:[144,108],w2:[136,90],k1:[152,110],f1:[180,134],k2:[148,114],f2:[176,138]} },
+  turtle:{ view:'side', front:'a', cap:['Attacker','Turtled'], victim:'b',
+    a:{h:[110,82],n:[122,86],p:[166,72],e1:[110,104],w1:[124,122],e2:[132,104],w2:[146,118],k1:[184,104],f1:[196,142],k2:[176,108],f2:[182,142]},
+    b:{h:[94,118],n:[108,108],p:[150,104],e1:[108,134],w1:[88,138],e2:[114,130],w2:[96,136],k1:[144,138],f1:[176,142],k2:[140,136],f2:[170,140]} },
+  mount:{ view:'side', front:'b', cap:['Bottom','Top'], victim:'a',
+    a:{h:[36,128],n:[50,130],p:[104,132],e1:[70,112],w1:[88,108],e2:[68,116],w2:[84,112],k1:[134,124],f1:[164,138],k2:[136,128],f2:[168,140]},
+    b:{h:[76,60],n:[80,72],p:[92,114],e1:[66,94],w1:[56,122],e2:[90,98],w2:[72,124],k1:[64,136],f1:[98,140],k2:[68,134],f2:[102,138]} },
+  kob:{ view:'side', front:'b', cap:['Bottom','Top'], victim:'a',
+    a:{h:[36,128],n:[50,130],p:[102,132],e1:[66,114],w1:[80,110],e2:[64,118],w2:[78,114],k1:[130,124],f1:[158,138],k2:[128,128],f2:[156,140]},
+    b:{h:[94,34],n:[98,46],p:[106,86],e1:[84,74],w1:[62,116],e2:[110,74],w2:[106,108],k1:[80,118],f1:[112,120],k2:[130,106],f2:[136,142]} },
+  side:{ view:'top', front:'b', cap:['Bottom','Top'], victim:'a',
+    a:{h:[44,80],n:[58,80],p:[118,80],e1:[78,108],w1:[96,116],e2:[70,54],w2:[82,40],k1:[148,92],f1:[180,98],k2:[148,68],f2:[180,62]},
+    b:{h:[72,58],n:[76,72],p:[86,118],e1:[54,66],w1:[40,84],e2:[96,62],w2:[100,44],k1:[112,136],f1:[134,150],k2:[60,138],f2:[42,150]} },
+  ns:{ view:'top', front:'b', cap:['Bottom','Top'], victim:'a',
+    a:{h:[96,80],n:[110,80],p:[168,80],e1:[124,104],w1:[140,116],e2:[124,56],w2:[140,44],k1:[196,92],f1:[222,98],k2:[196,68],f2:[222,62]},
+    b:{h:[132,80],n:[118,80],p:[72,80],e1:[136,106],w1:[150,94],e2:[136,54],w2:[150,66],k1:[50,102],f1:[24,108],k2:[50,58],f2:[24,52]} },
+};
+
+const TYPES = {
+  takedown:{label:'Takedown',g:'T'}, sweep:{label:'Sweep',g:'S'}, pass:{label:'Pass',g:'P'},
+  escape:{label:'Escape',g:'E'}, transition:{label:'Transition',g:'→'}, back:{label:'Back take',g:'B'},
+  submission:{label:'Submission',g:'✕'}, counter:{label:'Counter',g:'C'},
+};
+
+/* =====================================================================
+   Lookups & layout
+   ===================================================================== */
+const R_POS = 80, R_SUB = 100, R_MV = 17;
+const POS = {}; POSITIONS.forEach(p => { p.r = p.isSub ? R_SUB : R_POS; POS[p.id] = p; });
+const MV = {};  MOVES.forEach(m => { MV[m.id] = m; if (m.type === 'submission') m.to = 'sub'; });
+const startOf = m => m.type === 'counter' ? startOf(MV[m.counterOf]) : m.from;
+
+/* Which figure (a/b) in a pose plays a role. The player performing a move is drawn red in every frame. */
+const ROLE_FIG = {
+  standing:{}, back:{attacker:'a', top:'a', defender:'b', bottom:'b'}, turtle:{attacker:'a', top:'a', defender:'b', bottom:'b'},
+};
+const figFor = (pose, role) => pose === 'standing' ? 'b' : ((ROLE_FIG[pose] || {})[role] || (role === 'bottom' ? 'a' : 'b'));
+const END_ROLE = { sweep:'top', pass:'top', takedown:'top', back:'attacker' };
+function performer(m){
+  const start = m.by.split(/[\s(]/)[0].toLowerCase();
+  const end = m.end || END_ROLE[m.type] || start;
+  return { startFig: figFor(startOf(m), start), endFig: figFor(m.to, end) };
+}
+
+function layout(){
+  // regular moves: spread along shared position pairs
+  const groups = {};
+  MOVES.forEach(m => { if (m.type === 'counter' || m.to === 'sub') return;
+    const k = [m.from, m.to].sort().join('|'); (groups[k] = groups[k] || []).push(m); });
+  Object.entries(groups).forEach(([k, g]) => {
+    const [a, b] = k.split('|').map(id => POS[id]);
+    const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy), nx = -dy / L, ny = dx / L;
+    g.forEach((m, i) => {
+      const off = (i - (g.length - 1) / 2) * 115, A = POS[m.from], B = POS[m.to], t = m.t ?? 0.5;
+      m.ix = A.x + (B.x - A.x) * t + nx * off; m.iy = A.y + (B.y - A.y) * t + ny * off;
+    });
+  });
+  // submissions: fan out from their position toward the Submission circle
+  const subs = {};
+  MOVES.filter(m => m.to === 'sub').forEach(m => (subs[m.from] = subs[m.from] || []).push(m));
+  Object.entries(subs).forEach(([f, g]) => {
+    const A = POS[f], S = POS.sub, base = Math.atan2(S.y - A.y, S.x - A.x);
+    g.forEach((m, i) => { const ang = base + (i - (g.length - 1) / 2) * 0.55, d = A.r + 115;
+      m.ix = A.x + Math.cos(ang) * d; m.iy = A.y + Math.sin(ang) * d; });
+  });
+  // counters: step off their parent toward their destination
+  MOVES.filter(m => m.type === 'counter').forEach(m => {
+    const P = MV[m.counterOf], B = POS[m.to], dx = B.x - P.ix, dy = B.y - P.iy, L = Math.hypot(dx, dy);
+    const d = Math.min(150, L * 0.45); m.ix = P.ix + dx / L * d; m.iy = P.iy + dy / L * d;
+  });
+  MOVES.forEach(m => { m.x = m.ix; m.y = m.iy; });
+  // relax: keep move nodes off position circles and off each other
+  for (let it = 0; it < 500; it++) {
+    MOVES.forEach(m => {
+      let fx = (m.ix - m.x) * 0.03, fy = (m.iy - m.y) * 0.03;
+      POSITIONS.forEach(p => { const dx = m.x - p.x, dy = m.y - p.y, d = Math.hypot(dx, dy) || 1, min = p.r + 55;
+        if (d < min) { fx += dx / d * (min - d) * 0.5; fy += dy / d * (min - d) * 0.5; } });
+      MOVES.forEach(o => { if (o === m) return; const dx = (m.x - o.x) / 1.8, dy = m.y - o.y, d = Math.hypot(dx, dy) || 0.1, min = 62;
+        if (d < min) { fx += dx / d * (min - d) * 0.35; fy += dy / d * (min - d) * 0.35; } });
+      m.vx = fx; m.vy = fy;
+    });
+    MOVES.forEach(m => { m.x += m.vx; m.y += m.vy; });
+  }
+}
+
+/* =====================================================================
+   Map rendering
+   ===================================================================== */
+const svg = document.getElementById('map'), vp = document.getElementById('viewport');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function splitLabel(s){
+  if (s.length <= 14) return [s];
+  const mid = s.length / 2; let best = -1;
+  for (let i = 0; i < s.length; i++) if (s[i] === ' ' && (best < 0 || Math.abs(i - mid) < Math.abs(best - mid))) best = i;
+  return best < 0 ? [s] : [s.slice(0, best), s.slice(best + 1)];
+}
+function seg(a, ar, b, br, cls, mid, arrow){
+  const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  const x1 = a.x + ux * ar, y1 = a.y + uy * ar, x2 = b.x - ux * (br + (arrow ? 4 : 0)), y2 = b.y - uy * (br + (arrow ? 4 : 0));
+  const mk = arrow ? ` marker-end="url(#${/sub|ctr/.test(cls) ? 'arr-red' : 'arr-ink'})"` : '';
+  return `<path class="edge ${cls}" data-m="${mid}" d="M${x1.toFixed(1)},${y1.toFixed(1)}L${x2.toFixed(1)},${y2.toFixed(1)}"${mk}/>`;
+}
+function moveGlyph(type, r = R_MV, x = 0, y = 0){
+  return `<g class="t-${type}"><circle class="dot" cx="${x}" cy="${y}" r="${r}"/><text class="glyph" x="${x}" y="${y + 0.5}" style="font-size:${r * 0.8}px">${TYPES[type].g}</text></g>`;
+}
+function renderMap(){
+  let E = '', P = '', M = '';
+  MOVES.forEach(m => {
+    const cls = m.type === 'counter' ? 'ctr' : (m.to === 'sub' ? 'sub' : '');
+    const src = m.type === 'counter' ? MV[m.counterOf] : POS[m.from];
+    const srcR = m.type === 'counter' ? R_MV + 3 : src.r + 3;
+    E += seg(src, srcR, m, R_MV + 3, cls, m.id, false);
+    E += seg(m, R_MV + 3, POS[m.to], POS[m.to].r + 3, cls + ' out', m.id, true);
+    const lines = splitLabel(m.name);
+    M += `<g class="node mv t-${m.type}" data-id="${m.id}" transform="translate(${m.x.toFixed(1)},${m.y.toFixed(1)})">
+      <circle class="ring" r="${R_MV + 7}"/><circle class="dot" r="${R_MV}"/><text class="glyph" y="0.5">${TYPES[m.type].g}</text>
+      ${lines.map((l, i) => `<text class="lbl" y="${R_MV + 18 + i * 15}">${esc(l)}</text>`).join('')}</g>`;
+  });
+  POSITIONS.forEach(p => {
+    const n = p.label.length, top = -(n - 1) * 13 + (p.kanji ? 10 : 0);
+    P += `<g class="node pos${p.isSub ? ' subm' : ''}" data-id="${p.id}" transform="translate(${p.x},${p.y})">
+      <circle class="outer" r="${p.r}"/><circle class="inner" r="${p.r - 8}"/>
+      ${p.kanji ? `<text class="kanji" y="${top - 30}">${p.kanji}</text>` : ''}
+      ${p.label.map((l, i) => `<text class="name" y="${top + 8 + i * 26}">${esc(l)}</text>`).join('')}</g>`;
+  });
+  document.getElementById('edges').innerHTML = E;
+  document.getElementById('positions').innerHTML = P;
+  document.getElementById('moves').innerHTML = M;
+}
+
+/* =====================================================================
+   Pan / zoom
+   ===================================================================== */
+const view = { x: 0, y: 0, k: 0.4 };
+const applyView = () => vp.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+function bounds(){
+  const xs = [], ys = [];
+  POSITIONS.forEach(p => { xs.push(p.x - p.r, p.x + p.r); ys.push(p.y - p.r, p.y + p.r); });
+  MOVES.forEach(m => { xs.push(m.x - 60, m.x + 60); ys.push(m.y - 25, m.y + 50); });
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+}
+function fit(animate = true){
+  const b = bounds(), r = svg.getBoundingClientRect(), pad = 30;
+  const k = Math.min((r.width - pad * 2) / (b.x1 - b.x0), (r.height - pad * 2) / (b.y1 - b.y0));
+  const t = { k, x: r.width / 2 - (b.x0 + b.x1) / 2 * k, y: r.height / 2 - (b.y0 + b.y1) / 2 * k };
+  animate ? animateTo(t) : (Object.assign(view, t), applyView());
+}
+let anim;
+function animateTo(t, ms = 380){
+  cancelAnimationFrame(anim); const s = { ...view }, t0 = performance.now();
+  const step = now => { const u = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - u, 3);
+    view.x = s.x + (t.x - s.x) * e; view.y = s.y + (t.y - s.y) * e; view.k = s.k + (t.k - s.k) * e; applyView();
+    if (u < 1) anim = requestAnimationFrame(step); };
+  anim = requestAnimationFrame(step);
+}
+function fitTo(ids){
+  const xs = [], ys = [];
+  ids.forEach(i => { const o = POS[i] || MV[i]; const r = o.r || 60; xs.push(o.x - r, o.x + r); ys.push(o.y - r, o.y + r + 30); });
+  const r = svg.getBoundingClientRect(), pad = 50, x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min(1.1, (r.width - pad * 2) / (x1 - x0), (r.height - pad * 2) / (y1 - y0));
+  animateTo({ k, x: r.width / 2 - (x0 + x1) / 2 * k, y: r.height / 2 - (y0 + y1) / 2 * k });
+}
+function zoomAt(f, cx, cy){
+  const k = Math.min(2.5, Math.max(0.12, view.k * f)), s = k / view.k;
+  view.x = cx - (cx - view.x) * s; view.y = cy - (cy - view.y) * s; view.k = k; applyView();
+}
+svg.addEventListener('wheel', e => { e.preventDefault(); cancelAnimationFrame(anim);
+  const r = svg.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+
+const ptrs = new Map(); let downInfo = null, pinch = null;
+svg.addEventListener('pointerdown', e => {
+  cancelAnimationFrame(anim); svg.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 1) { const n = e.target.closest('.node');
+    downInfo = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, id: n && n.dataset.id, moved: false }; }
+  else if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; downInfo && (downInfo.moved = true); }
+});
+svg.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2 && pinch) { const [a, b] = [...ptrs.values()], r = svg.getBoundingClientRect();
+    const d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt(pinch.k * d / pinch.d / view.k, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top); return; }
+  if (!downInfo) return;
+  const dx = e.clientX - downInfo.x, dy = e.clientY - downInfo.y;
+  if (!downInfo.moved && Math.hypot(dx, dy) > 4) { downInfo.moved = true; svg.classList.add('dragging'); }
+  if (downInfo.moved) { view.x = downInfo.vx + dx; view.y = downInfo.vy + dy; applyView(); }
+});
+const endPtr = e => {
+  ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
+  if (ptrs.size === 0 && downInfo) { if (!downInfo.moved && e.type === 'pointerup') select(downInfo.id || null);
+    downInfo = null; svg.classList.remove('dragging'); }
+};
+svg.addEventListener('pointerup', endPtr); svg.addEventListener('pointercancel', endPtr);
+document.getElementById('zin').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(1.3, r.width / 2, r.height / 2); };
+document.getElementById('zout').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(1 / 1.3, r.width / 2, r.height / 2); };
+document.getElementById('zfit').onclick = () => fit();
+addEventListener('keydown', e => { if (e.key === 'Escape') select(null); });
+addEventListener('resize', () => fit(false));
+
+/* =====================================================================
+   Filters & highlighting
+   ===================================================================== */
+const hiddenTypes = new Set();
+const isHidden = m => hiddenTypes.has(m.type) || (m.type === 'counter' && isHidden(MV[m.counterOf]));
+function buildFilters(){
+  const el = document.getElementById('filters');
+  el.innerHTML = Object.entries(TYPES).map(([t, v]) =>
+    `<button class="chip" data-t="${t}" aria-pressed="true"><svg width="20" height="20" viewBox="-11 -11 22 22">${moveGlyph(t, 8.5)}</svg>${v.label}</button>`).join('');
+  el.onclick = e => { const c = e.target.closest('.chip'); if (!c) return; const t = c.dataset.t;
+    hiddenTypes.has(t) ? hiddenTypes.delete(t) : hiddenTypes.add(t);
+    c.setAttribute('aria-pressed', !hiddenTypes.has(t)); applyState(); };
+}
+let selected = null;
+function neighbourhood(id){
+  const S = new Set([id]), E = new Set();
+  const addMove = m => { S.add(m.id); E.add(m.id); S.add(m.to); if (m.from) S.add(m.from); };
+  if (POS[id]) {
+    MOVES.forEach(m => {
+      if (m.from === id || m.to === id) addMove(m);
+      if (m.type === 'counter' && m.to === id) addMove(MV[m.counterOf]);
+    });
+    MOVES.forEach(c => { if (c.type === 'counter' && MV[c.counterOf].from === id) addMove(c); });
+  } else {
+    const m = MV[id]; addMove(m);
+    if (m.type === 'counter') addMove(MV[m.counterOf]);
+    MOVES.forEach(c => { if (c.counterOf === id) addMove(c); });
+  }
+  return { S, E };
+}
+function applyState(){
+  const nb = selected ? neighbourhood(selected) : null;
+  document.querySelectorAll('.mv').forEach(n => { const m = MV[n.dataset.id];
+    n.classList.toggle('hidden', isHidden(m));
+    n.classList.toggle('dim', !!nb && !nb.S.has(m.id));
+    n.classList.toggle('sel', m.id === selected); });
+  document.querySelectorAll('.pos').forEach(n => { const id = n.dataset.id;
+    n.classList.toggle('dim', !!nb && !nb.S.has(id));
+    n.classList.toggle('sel', id === selected); });
+  document.querySelectorAll('.edge').forEach(n => { const m = MV[n.dataset.m];
+    n.classList.toggle('hidden', isHidden(m));
+    n.classList.toggle('hl', !!nb && nb.E.has(m.id));
+    n.classList.toggle('dim', !!nb && !nb.E.has(m.id)); });
+}
+function select(id, pan = false){
+  selected = id; applyState(); renderPanel();
+  if (id && pan) fitTo([...neighbourhood(id).S]);
+  document.getElementById('side').scrollTop = 0;
+}
+
+/* =====================================================================
+   Diagrams
+   ===================================================================== */
+const INK = '#141414', RED = '#b81d24', PAPER = '#fffdf8';
+function poly(pts, w, color, op, halo){
+  const d = 'M' + pts.map(p => p.join(',')).join('L');
+  return (halo ? `<path d="${d}" stroke="${PAPER}" stroke-width="${w + 5}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` : '') +
+    `<path d="${d}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${op}"/>`;
+}
+function figure(f, color, halo){
+  return poly([f.n, f.e2, f.w2], 5.5, color, .45, halo) + poly([f.p, f.k2, f.f2], 6.5, color, .45, halo) +
+    poly([f.n, f.p], 10, color, 1, halo) +
+    (halo ? `<circle cx="${f.h[0]}" cy="${f.h[1]}" r="11" fill="${PAPER}"/>` : '') +
+    `<circle cx="${f.h[0]}" cy="${f.h[1]}" r="8.5" fill="${color}"/>` +
+    poly([f.p, f.k1, f.f1], 7, color, 1, halo) + poly([f.n, f.e1, f.w1], 6, color, 1, halo);
+}
+function ground(view){
+  if (view === 'top') return `<rect x="8" y="8" width="224" height="144" fill="none" stroke="${INK}" stroke-opacity=".18" stroke-width="1.5"/>
+    <path d="M120 8V152M8 80H232" stroke="${INK}" stroke-opacity=".08" stroke-width="1"/>
+    <text x="226" y="20" text-anchor="end" font-size="9" fill="${INK}" fill-opacity=".45" font-family="sans-serif">VIEW FROM ABOVE</text>`;
+  return `<path d="M10 145 Q 70 142 120 144.5 T 230 144" stroke="${INK}" stroke-width="3" fill="none" stroke-linecap="round" opacity=".85"/>`;
+}
+function targetPt(pose, target){
+  const f = pose[pose.victim];
+  if (target === 'neck') return [(f.h[0] + f.n[0]) / 2, (f.h[1] + f.n[1]) / 2];
+  if (target === 'elbow') return f.e1;
+  return f.n;
+}
+function drawPose(id, target, redFig = 'b'){
+  if (id === 'sub') return `<svg viewBox="0 0 240 160" role="img" aria-label="Ensō circle">
+    <path d="M150 34 A 56 56 0 1 1 104 30" stroke="${INK}" stroke-width="13" fill="none" stroke-linecap="round"/>
+    <path d="M104 30 Q 116 26 128 27" stroke="${INK}" stroke-width="6" fill="none" stroke-linecap="round" opacity=".7"/>
+    <text x="120" y="92" text-anchor="middle" font-family="Shippori Mincho B1, serif" font-weight="800" font-size="30" fill="${RED}">参った</text></svg>`;
+  const P = POSES[id]; if (!P) return '';
+  const [back, front] = P.front === 'a' ? ['b', 'a'] : ['a', 'b'];
+  const col = k => k === redFig ? RED : INK;
+  let mark = '';
+  if (target) { const [x, y] = targetPt(P, target);
+    mark = `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="${RED}" stroke-width="3" stroke-dasharray="3 3"/>
+      <circle cx="${x}" cy="${y}" r="22" fill="none" stroke="${RED}" stroke-width="1.2" opacity=".5"/>`; }
+  return `<svg viewBox="0 0 240 160" role="img" aria-label="${esc(POS[id].name)} diagram">${ground(P.view)}
+    ${figure(P[back], col(back), false)}${figure(P[front], col(front), true)}${mark}</svg>`;
+}
+function capFor(id, redFig = 'b'){
+  const P = POSES[id]; if (!P) return '';
+  const [blk, red] = redFig === 'b' ? [P.cap[0], P.cap[1]] : [P.cap[1], P.cap[0]];
+  return `<div class="figcap"><i style="background:${INK}"></i>${blk}<i style="background:${RED}"></i>${red}</div>`;
+}
+
+/* =====================================================================
+   Sidebar
+   ===================================================================== */
+const panel = document.getElementById('panel');
+const linkBtn = (m, toText) => `<button class="link" data-go="${m.id}"><svg width="22" height="22" viewBox="-12 -12 24 24">${moveGlyph(m.type, 10)}</svg>${esc(m.name)}<span class="to">${toText}</span></button>`;
+const posBtn = id => `<button class="link" data-go="${id}"><svg width="22" height="22" viewBox="-12 -12 24 24"><circle r="9.5" fill="${POS[id].isSub ? INK : PAPER}" stroke="${INK}" stroke-width="2.5"/></svg>${esc(POS[id].name)}</button>`;
+
+function renderIntro(){
+  panel.innerHTML = `<div class="intro">
+    <div class="kicker"><span class="tag">道場</span> How to use</div>
+    <div class="title">Map of the ground game</div>
+    <figure class="diagram">${drawPose('closed')}${capFor('closed')}</figure>
+    <p>Each <b>large circle</b> is a position. The <b>small circles</b> between them are the moves that take you from one position to the next, with an arrow pointing to where you end up.</p>
+    <p>Red dashed lines are <b>counters</b>: what the other person does to stop a move, and where it takes them instead. Every <b style="color:var(--red)">red</b> move leads to the black <b>Submission</b> circle.</p>
+    <p>Click any circle to learn about it. Use the chips at the top to show or hide move types.</p>
+    <h3>Legend</h3>
+    <div class="legend">
+      <svg width="30" height="30" viewBox="-15 -15 30 30"><circle r="12" fill="${PAPER}" stroke="${INK}" stroke-width="3"/></svg><span>Position</span>
+      ${Object.entries(TYPES).map(([t, v]) => `<svg width="30" height="30" viewBox="-15 -15 30 30">${moveGlyph(t, 11)}</svg><span>${v.label}</span>`).join('')}
+    </div>
+    <h3>Start here</h3>
+    <div class="links">${['standing', 'closed', 'mount', 'side', 'back'].map(posBtn).join('')}</div>
+    <div class="note">This is a study aid, not a substitute for a coach. Moves and finishing positions are simplified, and real exchanges have many variations. Drill submissions slowly and always tap early.</div>
+  </div>`;
+}
+function renderPosition(p){
+  const out = MOVES.filter(m => m.from === p.id);
+  const ins = MOVES.filter(m => m.to === p.id);
+  const byType = {}; out.forEach(m => (byType[m.type] = byType[m.type] || []).push(m));
+  panel.innerHTML = `
+    <div class="kicker">Position <span class="tag">· ${p.tag}</span></div>
+    <div class="title">${esc(p.name)}</div>
+    ${p.kanji ? `<div class="romaji"><b>${p.kanji}</b>${p.romaji}</div>` : ''}
+    <figure class="diagram">${drawPose(p.id)}${capFor(p.id)}</figure>
+    <p class="desc">${esc(p.desc)}</p>
+    <h3>Key points</h3><ol class="steps">${p.points.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    ${out.length ? `<h3>Moves from here</h3>${Object.entries(byType).map(([t, ms]) =>
+      `<div class="grouplabel">${TYPES[t].label}s</div><div class="links">${ms.map(m => linkBtn(m, m.to === 'sub' ? m.by : '→ ' + POS[m.to].name)).join('')}</div>`).join('')}` : ''}
+    ${ins.length ? `<h3>Ways in</h3><div class="links">${ins.map(m => linkBtn(m, 'from ' + (m.type === 'counter' ? MV[m.counterOf].name : POS[m.from].name))).join('')}</div>` : ''}`;
+}
+function renderMove(m){
+  const start = startOf(m), counters = MOVES.filter(c => c.counterOf === m.id), parent = m.type === 'counter' ? MV[m.counterOf] : null;
+  const { startFig, endFig } = performer(m);
+  let diagram;
+  if (m.type === 'submission') diagram = `<figure class="diagram">${drawPose(m.from, m.target, startFig)}${capFor(m.from, startFig)}</figure>
+    <div class="figlabel" style="color:var(--red)">Target: ${m.target}</div>`;
+  else diagram = `<div class="frames">
+    <figure><div class="diagram">${drawPose(start, null, startFig)}${capFor(start, startFig)}</div><div class="figlabel">Start · ${esc(POS[start].name)}</div></figure>
+    <div class="arrow">↓</div>
+    <figure><div class="diagram">${drawPose(m.to, null, endFig)}${capFor(m.to, endFig)}</div><div class="figlabel">Finish · ${esc(POS[m.to].name)}</div></figure></div>`;
+  panel.innerHTML = `
+    <div class="kicker">${TYPES[m.type].label} <span class="tag">· ${esc(m.by)}</span></div>
+    <div class="title">${esc(m.name)}</div>
+    ${diagram}
+    <div class="figcap" style="margin-top:6px"><i style="background:${RED}"></i>Red is the player doing the move</div>
+    <p class="desc">${esc(m.desc)}</p>
+    ${m.steps && m.steps.length ? `<h3>Steps</h3><ol class="steps">${m.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
+    <h3>Route</h3>
+    <div class="route">${parent ? linkBtn(parent, 'countered') : posBtn(m.from)}<span class="sep">→</span>${posBtn(m.to)}</div>
+    ${counters.length ? `<h3>Counters</h3><div class="links">${counters.map(c => linkBtn(c, '→ ' + POS[c.to].name)).join('')}</div>` : ''}`;
+}
+function renderPanel(){
+  if (!selected) return renderIntro();
+  POS[selected] ? renderPosition(POS[selected]) : renderMove(MV[selected]);
+}
+panel.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) select(b.dataset.go, true); });
+
+/* ===================================================================== */
+layout(); renderMap(); buildFilters(); applyState(); renderPanel(); fit(false);
+</script>
+</body>
+</html>
